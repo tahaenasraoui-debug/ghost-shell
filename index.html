@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>GHOST SHELL // CRT TERMINAL EMULATOR</title>
+  </head>
+  <body>
+    <div id="crt-chassis" class="crt-chassis" data-theme="green" data-crt="on" data-power="on">
+      <!-- Outer Monitor Bezel -->
+      <div class="bezel-frame">
+        <div class="bezel-top-vent">
+          <span class="chassis-serial">MODEL // GSH-9000X PHOSPHOR DISPLAY UNIT</span>
+          <span class="chassis-warning">CAUTION: HIGH VOLTAGE CATHODE RAY TUBE</span>
+        </div>
+
+        <!-- Recessed CRT Glass Tube -->
+        <div id="crt-screen" class="crt-screen" tabindex="0">
+          <!-- Procedural HTML5 Canvas Layer (Matrix / Oscilloscope / Starfield / Plasma) -->
+          <canvas id="fx-canvas" class="fx-canvas"></canvas>
+
+          <!-- Optical CRT Filter Layers -->
+          <div class="crt-scanlines" aria-hidden="true"></div>
+          <div class="crt-aperture" aria-hidden="true"></div>
+          <div class="crt-scanbar" aria-hidden="true"></div>
+          <div class="crt-vignette" aria-hidden="true"></div>
+
+          <!-- Active Phosphor Content Layer -->
+          <div class="phosphor-layer">
+            <!-- Top Telemetry Header -->
+            <header class="telemetry-bar">
+              <div class="telemetry-group">
+                <span class="telemetry-badge">GHOST//OS v4.9.2</span>
+                <span id="hud-node" class="telemetry-item">NODE: NEON-7</span>
+                <span id="hud-fx" class="telemetry-item">FX: IDLE</span>
+              </div>
+              <div class="telemetry-group">
+                <span id="hud-cpu" class="telemetry-item">CPU: 04%</span>
+                <span id="hud-mem" class="telemetry-item">MEM: 128K</span>
+                <span id="hud-audio" class="telemetry-item">SND: ON</span>
+                <span id="hud-clock" class="telemetry-item">00:00:00 UTC</span>
+              </div>
+            </header>
+
+            <!-- Scrollable Terminal Output Buffer -->
+            <main id="terminal-viewport" class="terminal-viewport" role="log" aria-live="polite">
+              <div id="terminal-output" class="terminal-output"></div>
+
+              <!-- Interactive Command Prompt Row (Zero internal whitespace in .terminal-editor) -->
+              <div id="terminal-input-row" class="terminal-input-row">
+                <span id="terminal-prompt" class="terminal-prompt">king@ghost-shell:~$</span>
+                <div class="terminal-editor"><span id="input-before" class="input-segment"></span><span id="terminal-cursor" class="terminal-cursor"> </span><span id="input-after" class="input-segment"></span><span id="input-ghost-suggestion" class="input-ghost-suggestion"></span></div>
+              </div>
+            </main>
+
+            <!-- Bottom Function Key Hint Bar -->
+            <footer class="shortcut-bar">
+              <span><strong>[TAB]</strong> COMPLETE</span>
+              <span><strong>[UP/DN]</strong> HISTORY</span>
+              <span><strong>[CTRL+L]</strong> CLEAR</span>
+              <span><strong>[CTRL+C]</strong> ABORT/FX-STOP</span>
+              <span><strong>TYPE:</strong> <code>help</code></span>
+            </footer>
+          </div>
+
+          <!-- CRT Power-Off Collapse Dot Overlay -->
+          <div class="crt-power-beam" aria-hidden="true"></div>
+        </div>
+
+        <!-- Bottom Hardware Control Panel -->
+        <div class="bezel-controls">
+          <div class="brand-plate">
+            <span class="brand-logo">GHOST//SHELL</span>
+            <span class="brand-sub">CYBERNETIC CONSOLE</span>
+          </div>
+
+          <div class="hardware-buttons">
+            <button id="btn-degauss" class="hw-btn" type="button" title="Trigger Magnetic Degauss Coil">
+              <span class="hw-btn-cap"></span>
+              <span class="hw-btn-label">DEGAUSS</span>
+            </button>
+            <button id="btn-theme" class="hw-btn" type="button" title="Cycle Phosphor Coating">
+              <span class="hw-btn-cap"></span>
+              <span class="hw-btn-label">PHOSPHOR</span>
+            </button>
+            <button id="btn-crt" class="hw-btn active" type="button" title="Toggle Scanline & Curvature Filters">
+              <span class="hw-btn-cap"></span>
+              <span class="hw-btn-label">CRT FX</span>
+            </button>
+            <button id="btn-audio" class="hw-btn active" type="button" title="Toggle Procedural Web Audio Synthesizer">
+              <span class="hw-btn-cap"></span>
+              <span class="hw-btn-label">AUDIO</span>
+            </button>
+            <button id="btn-power" class="hw-btn hw-btn-power active" type="button" title="Main Cathode Power Switch">
+              <span class="hw-led" id="power-led"></span>
+              <span class="hw-btn-label">POWER</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden native input for mobile/IME/clipboard integration -->
+    <input
+      id="terminal-hidden-input"
+      class="terminal-hidden-input"
+      type="text"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      aria-label="Terminal Command Input"
+    />
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
