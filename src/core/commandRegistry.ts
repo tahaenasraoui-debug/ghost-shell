@@ -1,6 +1,7 @@
 import {
     CommandCategory,
     CommandDefinition,
+    CommandFlagDefinition,
     CommandRegistryController,
     ParsedCommandInput
 } from '../types';
@@ -48,28 +49,69 @@ export class CommandRegistry implements CommandRegistryController {
         const args: string[] = [];
         const flags: Record<string, string | boolean> = {};
 
+        const definition = commandName ? this.get(commandName) : undefined;
+        const flagDefs = definition?.supportedFlags;
+        const shortFlagMap = new Map<string, CommandFlagDefinition>();
+        const longFlagMap = new Map<string, CommandFlagDefinition>();
+
+        if (flagDefs) {
+            for (const spec of flagDefs) {
+                if (spec.short) {
+                    shortFlagMap.set(spec.short, spec);
+                }
+                if (spec.long) {
+                    longFlagMap.set(spec.long, spec);
+                }
+            }
+        }
+
+        const assignFlag = (key: string, spec: CommandFlagDefinition | undefined, idx: number): number => {
+            if (spec?.takesValue) {
+                const next = tokens[idx + 1];
+                if (next !== undefined && !next.startsWith('-')) {
+                    flags[key] = next;
+                    return idx + 1;
+                }
+            }
+            flags[key] = true;
+            return idx;
+        };
+
         for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
             if (token.startsWith('--') && token.length > 2) {
                 const eqIdx = token.indexOf('=');
-                if (eqIdx !== -1) {
-                    const key = token.slice(2, eqIdx);
-                    const val = token.slice(eqIdx + 1);
-                    flags[key] = val;
-                } else {
-                    const key = token.slice(2);
-                    const next = tokens[i + 1];
-                    if (next && !next.startsWith('-')) {
-                        flags[key] = next;
-                        i++;
-                    } else {
-                        flags[key] = true;
+                const key = eqIdx !== -1 ? token.slice(2, eqIdx) : token.slice(2);
+
+                if (flagDefs !== undefined) {
+                    const spec = longFlagMap.get(key);
+                    if (!spec) {
+                        args.push(token);
+                        continue;
                     }
+                    if (eqIdx !== -1) {
+                        flags[key] = token.slice(eqIdx + 1);
+                    } else {
+                        i = assignFlag(key, spec, i);
+                    }
+                } else if (eqIdx !== -1) {
+                    flags[key] = token.slice(eqIdx + 1);
+                } else {
+                    flags[key] = true;
                 }
             } else if (token.startsWith('-') && token.length > 1 && !/^-\d/.test(token)) {
-                const shortFlags = token.slice(1).split('');
-                for (const sf of shortFlags) {
-                    flags[sf] = true;
+                const shortChars = token.slice(1).split('');
+                if (shortFlagMap.size > 0 && shortChars.every((ch) => shortFlagMap.has(ch))) {
+                    if (shortChars.length === 1) {
+                        const sf = shortChars[0];
+                        i = assignFlag(sf, shortFlagMap.get(sf), i);
+                    } else {
+                        for (const sf of shortChars) {
+                            flags[sf] = true;
+                        }
+                    }
+                } else {
+                    args.push(token);
                 }
             } else {
                 args.push(token);

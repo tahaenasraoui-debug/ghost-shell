@@ -267,11 +267,11 @@ export const visualCommands: CommandDefinition[] = [
         }
 
         if (sub === 'on') {
-            terminal.audio.setEnabled(true);
+            terminal.setAudioEnabled(true);
             terminal.audio.playSuccess();
             await terminal.print('Procedural Web Audio synthesizer ENABLED.', { type: 'success' });
         } else if (sub === 'off' || sub === 'mute') {
-            terminal.audio.setEnabled(false);
+            terminal.setAudioEnabled(false);
             await terminal.print('Procedural Web Audio synthesizer MUTED.', { type: 'warning' });
         } else if (sub === 'vol' || sub === 'volume') {
             const val = Number(args[1]);
@@ -279,11 +279,11 @@ export const visualCommands: CommandDefinition[] = [
                 await terminal.print('Usage: audio vol <0-100>', { type: 'error' });
                 return;
             }
-            terminal.audio.setVolume(val / 100);
+            terminal.setAudioVolume(val / 100);
             terminal.audio.playBeep(880, 70);
             await terminal.print(`Master synthesizer gain set to ${val}%.`, { type: 'success' });
         } else if (sub === 'test') {
-            terminal.audio.setEnabled(true);
+            terminal.setAudioEnabled(true);
             terminal.audio.playBootChord();
             await terminal.print('Playing harmonic FM calibration chord...', { type: 'success' });
         } else {
@@ -298,7 +298,8 @@ export const visualCommands: CommandDefinition[] = [
     category: 'visual',
     description: 'Render high-contrast block ASCII typography.',
     usage: 'banner <text>',
-    examples: ['banner GHOST', 'banner ABASS'],
+    examples: ['banner GHOST', 'banner KING'],
+    supportedFlags: [],
     execute: async ({ args, terminal }) => {
         const text = args.length > 0 ? args.join(' ') : 'GHOST SHELL';
         const art = renderBannerText(text);

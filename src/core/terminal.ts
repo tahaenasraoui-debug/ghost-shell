@@ -2,6 +2,7 @@ import {
     AudioController,
     CanvasEffectMode,
     CommandRegistryController,
+    LineType,
     PhosphorTheme,
     PrintOptions,
     ShellState,
@@ -71,7 +72,7 @@ function createInitialFileSystem(): Record<string, VirtualFile> {
                 '============================================================',
                 '                THE GHOST SHELL MANIFESTO                   ',
                 '============================================================',
-                'Operator Clearance: ABASS LE ROI DES BOBBYS [ROOT-00]',
+                'Operator Clearance: KING [ROOT-00]',
                 '',
                 'We reject bloated frameworks and silent interfaces.',
                 'Every keystroke resonates through copper coils and silicon.',
@@ -105,7 +106,7 @@ function createInitialFileSystem(): Record<string, VirtualFile> {
                 '[13:02:11] UPLINK ESTABLISHED -> RABAT-CORE-01 (10.244.8.1) [1.4ms]',
                 '[13:04:49] HANDSHAKE VERIFIED -> CASABLANCA-IX (10.244.19.4) [4.1ms]',
                 '[13:08:15] CIPHER ROTATED     -> AES-512-GCM // ZERO PACKET LOSS',
-                '[13:12:03] AUTHENTICATED      -> OPERATOR: Abass le roi des Bobbys'
+                '[13:12:03] AUTHENTICATED      -> OPERATOR: KING'
             ].join('\n')
         },
         {
@@ -114,8 +115,8 @@ function createInitialFileSystem(): Record<string, VirtualFile> {
             updatedAt: now,
             content:
             '-----BEGIN GHOST SHELL QUANTUM KEY-----\n' +
-            '47484F53 542D5348 454C4C2D 41424153\n' +
-            '532D524F 492D4445 532D424F 42425953\n' +
+            '47484F53 542D5348 454C4C2D 4B494E47\n' +
+            '2D524F4F 542D4349 50484552 2D4B4559\n' +
             '9F8E7D6C 5B4A3928 1706F5E4 D3C2B1A0\n' +
             '-----END GHOST SHELL QUANTUM KEY-----'
         }
@@ -150,12 +151,15 @@ export class GhostTerminal implements TerminalController {
     private canvasEl: HTMLCanvasElement;
     private canvasCtx: CanvasRenderingContext2D;
 
-    // HUD Elements
+    // HUD & Bezel Elements
     private hudCpuEl: HTMLElement;
     private hudMemEl: HTMLElement;
     private hudAudioEl: HTMLElement;
     private hudClockEl: HTMLElement;
     private hudFxEl: HTMLElement;
+    private btnCrtEl: HTMLElement | null;
+    private btnAudioEl: HTMLElement | null;
+    private btnPowerEl: HTMLElement | null;
 
     // Input & History State
     private currentBuffer = '';
@@ -163,7 +167,11 @@ export class GhostTerminal implements TerminalController {
     private history: string[] = [];
     private historyIndex = -1;
     private isBusy = false;
+    private isComposing = false;
+    private commandAborted = false;
     private abortController: AbortController | null = null;
+    private lifecycleAbort = new AbortController();
+    private telemetryTimerId: number | null = null;
 
     // Canvas Effect State
     private animFrameId: number | null = null;
@@ -172,24 +180,28 @@ export class GhostTerminal implements TerminalController {
     private waveformBuffer = new Uint8Array(512);
     private frameTick = 0;
 
+    public get isAborted(): boolean {
+        return this.commandAborted;
+    }
+
     constructor(audio: AudioController, registry: CommandRegistryController) {
         this.audio = audio;
         this.registry = registry;
 
         this.state = {
-            user: 'abass',
-            aliasTitle: 'Abass le roi des Bobbys',
+            user: 'king',
+            aliasTitle: 'KING',
             hostname: 'ghost-shell',
-            cwd: '/home/abass',
+            cwd: '/home/king',
             theme: 'green',
-            audioEnabled: true,
-            volume: 0.55,
+            audioEnabled: this.audio.enabled,
+            volume: this.audio.volume,
             crtEffectsEnabled: true,
             poweredOn: true,
             activeCanvasEffect: 'none',
             bootTimestamp: Date.now(),
             env: {
-                USER: 'Abass le roi des Bobbys',
+                USER: 'king',
                 SHELL: '/bin/ghost',
                 TERM: 'xterm-crt-256color',
                 NODE_ID: 'NEON-7',
@@ -221,9 +233,24 @@ export class GhostTerminal implements TerminalController {
         this.hudAudioEl = this.requireElement('#hud-audio');
         this.hudClockEl = this.requireElement('#hud-clock');
         this.hudFxEl = this.requireElement('#hud-fx');
+        this.btnCrtEl = document.querySelector<HTMLElement>('#btn-crt');
+        this.btnAudioEl = document.querySelector<HTMLElement>('#btn-audio');
+        this.btnPowerEl = document.querySelector<HTMLElement>('#btn-power');
+
+        const subscribableAudio = this.audio as AudioController & {
+            subscribe?: (listener: (enabled: boolean, volume: number) => void) => () => void;
+        };
+        subscribableAudio.subscribe?.((enabled, volume) => {
+            this.state.audioEnabled = enabled;
+            this.state.volume = volume;
+            this.syncAudioUI();
+        });
 
         this.loadHistory();
         this.bindEvents();
+        this.syncAudioUI();
+        this.syncCrtUI();
+        this.syncPowerUI();
         this.resizeCanvas();
         this.startTelemetryLoop();
         this.renderInputLine();
@@ -239,7 +266,7 @@ export class GhostTerminal implements TerminalController {
 
     private loadHistory(): void {
         try {
-            const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+            const raw = window.localStorage?.getItem(HISTORY_STORAGE_KEY);
             if (raw) {
                 const parsed = JSON.parse(raw);
                 if (Array.isArray(parsed)) {
@@ -253,39 +280,144 @@ export class GhostTerminal implements TerminalController {
 
     private saveHistory(): void {
         try {
-            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(this.history.slice(-100)));
+            window.localStorage?.setItem(
+                HISTORY_STORAGE_KEY,
+                JSON.stringify(this.history.slice(-100))
+            );
         } catch {
             // Ignore storage quota errors
         }
     }
 
     private bindEvents(): void {
-        // Focus hidden input when clicking anywhere on the CRT screen
-        this.screenEl.addEventListener('mousedown', () => {
-            this.audio.init();
-            setTimeout(() => {
-                if (window.getSelection()?.toString().length === 0) {
+        const { signal } = this.lifecycleAbort;
+
+        // Focus hidden input when clicking/tapping anywhere on the CRT screen
+        this.screenEl.addEventListener(
+            'mousedown',
+            () => {
+                this.audio.init();
+                setTimeout(() => {
+                    if ((window.getSelection()?.toString().length ?? 0) === 0) {
+                        this.hiddenInputEl.focus();
+                    }
+                }, 10);
+            },
+            { signal }
+        );
+
+        this.screenEl.addEventListener(
+            'click',
+            () => {
+                if ((window.getSelection()?.toString().length ?? 0) === 0) {
                     this.hiddenInputEl.focus();
                 }
-            }, 10);
-        });
+            },
+            { signal }
+        );
+
+        // Mobile / IME composition and virtual keyboard input listeners
+        this.hiddenInputEl.addEventListener(
+            'compositionstart',
+            () => {
+                this.isComposing = true;
+            },
+            { signal }
+        );
+
+        this.hiddenInputEl.addEventListener(
+            'compositionend',
+            (e) => {
+                this.isComposing = false;
+                this.consumeHiddenInput(e.data);
+            },
+            { signal }
+        );
+
+        this.hiddenInputEl.addEventListener(
+            'beforeinput',
+            (e) => {
+                if (
+                    !this.isComposing &&
+                    !e.isComposing &&
+                    e.inputType === 'deleteContentBackward' &&
+                    this.hiddenInputEl.value === '' &&
+                    this.state.poweredOn &&
+                    !this.isBusy
+                ) {
+                    e.preventDefault();
+                    this.deleteCharBeforeCursor();
+                }
+            },
+            { signal }
+        );
+
+        this.hiddenInputEl.addEventListener(
+            'input',
+            (e) => {
+                const inputEvent = e as InputEvent;
+                if (this.isComposing || inputEvent.isComposing) {
+                    return;
+                }
+                this.consumeHiddenInput();
+            },
+            { signal }
+        );
 
         // Global keydown listener
-        window.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        window.addEventListener('keydown', (e) => this.handleKeyDown(e), { signal });
 
         // Paste listener
-        window.addEventListener('paste', (e) => {
-            if (!this.state.poweredOn || this.isBusy) return;
-            const pasted = e.clipboardData?.getData('text');
-            if (pasted) {
-                e.preventDefault();
-                const clean = pasted.replace(/[\r\n]+/g, ' ');
-                this.insertTextAtCursor(clean);
-                this.audio.playKeystroke('standard');
-            }
-        });
+        window.addEventListener(
+            'paste',
+            (e) => {
+                if (!this.state.poweredOn || this.isBusy) return;
+                const pasted = e.clipboardData?.getData('text');
+                if (pasted) {
+                    e.preventDefault();
+                    const clean = pasted.replace(/[\r\n]+/g, ' ');
+                    this.insertTextAtCursor(clean);
+                    this.audio.playKeystroke('standard');
+                }
+            },
+            { signal }
+        );
 
-        window.addEventListener('resize', () => this.resizeCanvas());
+        window.addEventListener('resize', () => this.resizeCanvas(), { signal });
+    }
+
+    private consumeHiddenInput(fallbackData = ''): void {
+        const raw = this.hiddenInputEl.value || fallbackData;
+        this.hiddenInputEl.value = '';
+
+        if (!this.state.poweredOn || this.isBusy || !raw) {
+            return;
+        }
+
+        this.audio.init();
+        const clean = raw.replace(/[\r\n]+/g, ' ');
+        this.insertTextAtCursor(clean);
+        this.audio.playKeystroke(clean === ' ' ? 'space' : 'standard');
+    }
+
+    private deleteCharBeforeCursor(): void {
+        if (this.cursorPos > 0) {
+            this.currentBuffer =
+                this.currentBuffer.slice(0, this.cursorPos - 1) +
+                this.currentBuffer.slice(this.cursorPos);
+            this.cursorPos--;
+            this.audio.playKeystroke('backspace');
+            this.renderInputLine();
+        } else {
+            this.audio.playBeep(220, 40);
+        }
+    }
+
+    private resetInputBuffer(): void {
+        this.currentBuffer = '';
+        this.cursorPos = 0;
+        this.hiddenInputEl.value = '';
+        this.renderInputLine();
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
@@ -293,28 +425,46 @@ export class GhostTerminal implements TerminalController {
 
         if (!this.state.poweredOn) {
             if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
                 this.togglePower(true);
             }
             return;
         }
 
-        // Ctrl+C: cancel active typewriter or stop canvas visualization
+        if (this.isComposing || e.isComposing || e.key === 'Process' || e.keyCode === 229) {
+            return;
+        }
+
+        // Ctrl+C: cancel active async command / typewriter or stop canvas visualization
         if (e.ctrlKey && e.key.toLowerCase() === 'c') {
             e.preventDefault();
             this.audio.playKeystroke('enter');
+
+            const wasBusy = this.isBusy;
+            if (wasBusy) {
+                this.commandAborted = true;
+            }
+
             if (this.abortController) {
                 this.abortController.abort();
                 this.abortController = null;
             }
+
             if (this.state.activeCanvasEffect !== 'none') {
                 this.stopCanvasMode();
-                void this.print('^C [CANVAS SHADER TERMINATED]', { type: 'warning' });
+                this.appendOutputLine('^C [CANVAS SHADER TERMINATED]', 'warning');
                 return;
             }
-            void this.print(`${this.getPromptString()} ${this.currentBuffer}^C`, { type: 'command' });
-            this.currentBuffer = '';
-            this.cursorPos = 0;
-            this.renderInputLine();
+
+            if (wasBusy) {
+                this.appendOutputLine('^C [COMMAND ABORTED]', 'warning');
+            } else {
+                this.appendOutputLine(
+                    `${this.getPromptString()} ${this.currentBuffer}^C`,
+                    'command'
+                );
+            }
+            this.resetInputBuffer();
             return;
         }
 
@@ -330,9 +480,7 @@ export class GhostTerminal implements TerminalController {
         if (e.ctrlKey && e.key.toLowerCase() === 'u') {
             e.preventDefault();
             this.audio.playKeystroke('backspace');
-            this.currentBuffer = '';
-            this.cursorPos = 0;
-            this.renderInputLine();
+            this.resetInputBuffer();
             return;
         }
 
@@ -349,26 +497,15 @@ export class GhostTerminal implements TerminalController {
                 e.preventDefault();
                 this.audio.playKeystroke('enter');
                 const line = this.currentBuffer;
-                this.currentBuffer = '';
-                this.cursorPos = 0;
                 this.historyIndex = -1;
-                this.renderInputLine();
+                this.resetInputBuffer();
                 void this.executeLine(line);
                 break;
             }
 
             case 'Backspace': {
                 e.preventDefault();
-                if (this.cursorPos > 0) {
-                    this.currentBuffer =
-                    this.currentBuffer.slice(0, this.cursorPos - 1) +
-                    this.currentBuffer.slice(this.cursorPos);
-                    this.cursorPos--;
-                    this.audio.playKeystroke('backspace');
-                    this.renderInputLine();
-                } else {
-                    this.audio.playBeep(220, 40);
-                }
+                this.deleteCharBeforeCursor();
                 break;
             }
 
@@ -563,6 +700,7 @@ export class GhostTerminal implements TerminalController {
         }
 
         this.isBusy = true;
+        this.commandAborted = false;
         try {
             await definition.execute({
                 args: parsed.args,
@@ -577,12 +715,27 @@ export class GhostTerminal implements TerminalController {
             await this.print(`Runtime fault in "${definition.name}": ${message}`, { type: 'error' });
         } finally {
             this.isBusy = false;
+            this.commandAborted = false;
+            this.abortController = null;
             this.renderInputLine();
             this.scrollToBottom();
         }
     }
 
+    private appendOutputLine(text: string, type: LineType = 'standard', className = ''): HTMLElement {
+        const lineEl = document.createElement('div');
+        lineEl.className = `term-line term-line-${type} ${className}`.trim();
+        lineEl.textContent = text;
+        this.outputEl.appendChild(lineEl);
+        this.scrollToBottom();
+        return lineEl;
+    }
+
     public async print(text: string, options: PrintOptions = {}): Promise<void> {
+        if (this.isBusy && this.commandAborted) {
+            return;
+        }
+
         const {
             type = 'standard',
             typewriter = false,
@@ -591,30 +744,42 @@ export class GhostTerminal implements TerminalController {
             className = ''
         } = options;
 
-        const lineEl = document.createElement('div');
-        lineEl.className = `term-line term-line-${type} ${className}`.trim();
-        this.outputEl.appendChild(lineEl);
-
         if (!typewriter || speed <= 0) {
-            lineEl.textContent = text;
-            this.scrollToBottom();
+            this.appendOutputLine(text, type, className);
             return;
         }
 
-        this.abortController = new AbortController();
-        const signal = this.abortController.signal;
+        const lineEl = this.appendOutputLine('', type, className);
+        const controller = new AbortController();
+        this.abortController = controller;
+        const { signal } = controller;
 
-        for (let i = 0; i < text.length; i++) {
-            if (signal.aborted) {
-                lineEl.textContent = text;
-                break;
+        try {
+            for (let i = 0; i < text.length; i++) {
+                if (signal.aborted || this.commandAborted) {
+                    break;
+                }
+                lineEl.textContent += text[i];
+                if (playSound && i % 2 === 0 && text[i] !== ' ') {
+                    this.audio.playTypewriterTick();
+                }
+                this.scrollToBottom();
+                await new Promise<void>((resolve) => {
+                    const onAbort = (): void => {
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    const timer = setTimeout(() => {
+                        signal.removeEventListener('abort', onAbort);
+                        resolve();
+                    }, speed);
+                    signal.addEventListener('abort', onAbort, { once: true });
+                });
             }
-            lineEl.textContent += text[i];
-            if (playSound && i % 2 === 0 && text[i] !== ' ') {
-                this.audio.playTypewriterTick();
+        } finally {
+            if (this.abortController === controller) {
+                this.abortController = null;
             }
-            this.scrollToBottom();
-            await new Promise((resolve) => setTimeout(resolve, speed));
         }
     }
 
@@ -679,17 +844,47 @@ export class GhostTerminal implements TerminalController {
         return THEME_PALETTES[theme];
     }
 
+    private syncAudioUI(): void {
+        this.hudAudioEl.textContent = `SND: ${this.state.audioEnabled ? 'ON' : 'MUTE'}`;
+        this.btnAudioEl?.classList.toggle('active', this.state.audioEnabled);
+    }
+
+    private syncCrtUI(): void {
+        this.chassisEl.setAttribute('data-crt', this.state.crtEffectsEnabled ? 'on' : 'off');
+        this.btnCrtEl?.classList.toggle('active', this.state.crtEffectsEnabled);
+    }
+
+    private syncPowerUI(): void {
+        this.chassisEl.setAttribute('data-power', this.state.poweredOn ? 'on' : 'off');
+        this.btnPowerEl?.classList.toggle('active', this.state.poweredOn);
+    }
+
+    public setAudioEnabled(enabled: boolean): boolean {
+        const next = this.audio.setEnabled(enabled);
+        this.state.audioEnabled = next;
+        this.syncAudioUI();
+        return next;
+    }
+
+    public setAudioVolume(level: number): void {
+        this.audio.setVolume(level);
+        this.state.volume = this.audio.volume;
+    }
+
     public toggleCRT(force?: boolean): boolean {
         this.state.crtEffectsEnabled = force ?? !this.state.crtEffectsEnabled;
-        this.chassisEl.setAttribute('data-crt', this.state.crtEffectsEnabled ? 'on' : 'off');
+        this.syncCrtUI();
         return this.state.crtEffectsEnabled;
     }
 
     public togglePower(force?: boolean): boolean {
         const next = force ?? !this.state.poweredOn;
         this.state.poweredOn = next;
-        this.chassisEl.setAttribute('data-power', next ? 'on' : 'off');
+        this.syncPowerUI();
         this.audio.playPowerToggle(next);
+        if (next) {
+            this.hiddenInputEl.focus();
+        }
         return next;
     }
 
@@ -718,7 +913,11 @@ export class GhostTerminal implements TerminalController {
     public clearHistory(): void {
         this.history = [];
         this.historyIndex = -1;
-        localStorage.removeItem(HISTORY_STORAGE_KEY);
+        try {
+            window.localStorage?.removeItem(HISTORY_STORAGE_KEY);
+        } catch {
+            // Ignore storage errors
+        }
     }
 
     private scrollToBottom(): void {
@@ -945,52 +1144,81 @@ export class GhostTerminal implements TerminalController {
 
             const fileCount = Object.keys(this.state.fs).length;
             this.hudMemEl.textContent = `VFS: ${fileCount}F`;
-            this.hudAudioEl.textContent = `SND: ${this.audio.enabled ? 'ON' : 'MUTE'}`;
+            this.state.audioEnabled = this.audio.enabled;
+            this.state.volume = this.audio.volume;
+            this.syncAudioUI();
         };
 
         updateHud();
-        setInterval(updateHud, 1000);
+        this.telemetryTimerId = window.setInterval(updateHud, 1000);
+    }
+
+    public destroy(): void {
+        this.lifecycleAbort.abort();
+        if (this.telemetryTimerId !== null) {
+            clearInterval(this.telemetryTimerId);
+            this.telemetryTimerId = null;
+        }
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        this.stopCanvasMode();
     }
 
     public async reboot(): Promise<void> {
         this.isBusy = true;
+        this.commandAborted = false;
         this.stopCanvasMode();
         this.clear();
         this.audio.playBootChord();
 
-        const bootLines = [
-            'GHOST//BIOS v4.9.2-ROM (c) CYBERNETIC SYSTEMS DIVISION',
-            'VERIFYING HIGH-VOLTAGE CATHODE TUBE .............. [OK]',
-            'CALIBRATING P1/P3/P4 PHOSPHOR DEFLECTION COILS ... [OK]',
-            'INITIALIZING PROCEDURAL WEB AUDIO SYNTHESIZER .... [OK]',
-            'MOUNTING ZERO-DEPENDENCY VIRTUAL FILESYSTEM ...... [OK]',
-            `AUTHENTICATING SOVEREIGN OPERATOR: ${this.state.aliasTitle.toUpperCase()} ... [GRANTED]`
-        ];
+        try {
+            const bootLines = [
+                'GHOST//BIOS v4.9.2-ROM (c) CYBERNETIC SYSTEMS DIVISION',
+                'VERIFYING HIGH-VOLTAGE CATHODE TUBE .............. [OK]',
+                'CALIBRATING P1/P3/P4 PHOSPHOR DEFLECTION COILS ... [OK]',
+                'INITIALIZING PROCEDURAL WEB AUDIO SYNTHESIZER .... [OK]',
+                'MOUNTING ZERO-DEPENDENCY VIRTUAL FILESYSTEM ...... [OK]',
+                `AUTHENTICATING SOVEREIGN OPERATOR: ${this.state.aliasTitle.toUpperCase()} ... [GRANTED]`
+            ];
 
-        for (const line of bootLines) {
-            await this.print(line, { type: 'system', typewriter: true, speed: 6 });
+            for (const line of bootLines) {
+                if (this.commandAborted) {
+                    return;
+                }
+                await this.print(line, { type: 'system', typewriter: true, speed: 6 });
+                if (this.commandAborted) {
+                    return;
+                }
+            }
+
+            const asciiCrest = [
+                '   ______ __  __ ____   _____ ______   _____ __  __ ______ __     __ ',
+                '  / ____// / / // __ \\ / ___//_  __/  / ___// / / // ____// /    / / ',
+                ' / / __ / /_/ // / / / \\__ \\  / /     \\__ \\/ /_/ // __/  / /    / /  ',
+                '/ /_/ // __  // /_/ / ___/ / / /     ___/ / __  // /___ / /___ / /___',
+                '\\____//_/ /_/ \\____/ /____/ /_/     /____/_/ /_//_____//_____//_____/'
+            ].join('\n');
+
+            if (this.commandAborted) return;
+            await this.print(asciiCrest, { type: 'ascii' });
+            if (this.commandAborted) return;
+            await this.print(
+                `Welcome back, ${this.state.aliasTitle}. Ghost Shell is online and awaiting your command.`,
+                { type: 'success' }
+            );
+            if (this.commandAborted) return;
+            await this.print(
+                'Type "help" to inspect available commands, "sysinfo" for diagnostics, or "matrix" for visual shaders.',
+                { type: 'system' }
+            );
+        } finally {
+            this.isBusy = false;
+            this.commandAborted = false;
+            this.abortController = null;
+            this.renderInputLine();
+            this.hiddenInputEl.focus();
         }
-
-        const asciiCrest = [
-            '   ______ __  __ ____   _____ ______   _____ __  __ ______ __     __ ',
-            '  / ____// / / // __ \\ / ___//_  __/  / ___// / / // ____// /    / / ',
-            ' / / __ / /_/ // / / / \\__ \\  / /     \\__ \\/ /_/ // __/  / /    / /  ',
-            '/ /_/ // __  // /_/ / ___/ / / /     ___/ / __  // /___ / /___ / /___',
-            '\\____//_/ /_/ \\____/ /____/ /_/     /____/_/ /_//_____//_____//_____/'
-        ].join('\n');
-
-        await this.print(asciiCrest, { type: 'ascii' });
-        await this.print(
-            `Welcome back, ${this.state.aliasTitle}. Ghost Shell is online and awaiting your command.`,
-            { type: 'success' }
-        );
-        await this.print(
-            'Type "help" to inspect available commands, "sysinfo" for diagnostics, or "matrix" for visual shaders.',
-            { type: 'system' }
-        );
-
-        this.isBusy = false;
-        this.renderInputLine();
-        this.hiddenInputEl.focus();
     }
 }

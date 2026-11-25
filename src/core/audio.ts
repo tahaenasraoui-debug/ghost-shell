@@ -10,6 +10,20 @@ export class SoundEngine implements AudioController {
     private _enabled = true;
     private _volume = 0.55;
     private initialized = false;
+    private stateListeners = new Set<(enabled: boolean, volume: number) => void>();
+
+    public subscribe(listener: (enabled: boolean, volume: number) => void): () => void {
+        this.stateListeners.add(listener);
+        return () => {
+            this.stateListeners.delete(listener);
+        };
+    }
+
+    private notifyStateChange(): void {
+        for (const listener of this.stateListeners) {
+            listener(this._enabled, this._volume);
+        }
+    }
 
     public get enabled(): boolean {
         return this._enabled;
@@ -124,6 +138,7 @@ export class SoundEngine implements AudioController {
             const now = ctx.currentTime;
             this.masterGain.gain.setTargetAtTime(this._enabled ? this._volume : 0, now, 0.02);
         }
+        this.notifyStateChange();
         return this._enabled;
     }
 
@@ -133,6 +148,7 @@ export class SoundEngine implements AudioController {
         if (ctx && this.masterGain && this._enabled) {
             this.masterGain.gain.setTargetAtTime(this._volume, ctx.currentTime, 0.02);
         }
+        this.notifyStateChange();
     }
 
     public playKeystroke(variant: KeySoundVariant = 'standard'): void {
@@ -426,8 +442,10 @@ export class SoundEngine implements AudioController {
     }
 
     public getWaveformData(targetBuffer: Uint8Array): void {
-        if (this.analyser && this._enabled) {
-            this.analyser.getByteTimeDomainData(targetBuffer);
+        if (this.analyser && this._enabled && targetBuffer.buffer instanceof ArrayBuffer) {
+            this.analyser.getByteTimeDomainData(
+                targetBuffer as Parameters<AnalyserNode['getByteTimeDomainData']>[0]
+            );
         } else {
             targetBuffer.fill(128);
         }

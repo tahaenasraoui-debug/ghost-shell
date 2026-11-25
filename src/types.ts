@@ -90,6 +90,12 @@ export interface CommandContext {
 
 export type CommandCategory = 'system' | 'visual' | 'utility';
 
+export interface CommandFlagDefinition {
+    long?: string;
+    short?: string;
+    takesValue?: boolean;
+}
+
 export interface CommandDefinition {
     name: string;
     aliases?: string[];
@@ -97,6 +103,7 @@ export interface CommandDefinition {
     description: string;
     usage: string;
     examples?: string[];
+    supportedFlags?: CommandFlagDefinition[];
     execute: (ctx: CommandContext) => Promise<void> | void;
 }
 
@@ -115,6 +122,7 @@ export interface TerminalController {
     readonly state: ShellState;
     readonly audio: AudioController;
     readonly registry: CommandRegistryController;
+    readonly isAborted: boolean;
     print(text: string, options?: PrintOptions): Promise<void>;
     printRawHTML(html: string, className?: string): void;
     printTable(headers: string[], rows: string[][]): void;
@@ -123,6 +131,8 @@ export interface TerminalController {
     cycleTheme(): PhosphorTheme;
     toggleCRT(force?: boolean): boolean;
     togglePower(force?: boolean): boolean;
+    setAudioEnabled(enabled: boolean): boolean;
+    setAudioVolume(level: number): void;
     triggerDegauss(): void;
     triggerGlitch(durationMs?: number): void;
     startCanvasMode(mode: CanvasEffectMode): void;

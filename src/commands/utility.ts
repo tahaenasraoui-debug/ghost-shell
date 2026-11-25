@@ -187,8 +187,9 @@ export const utilityCommands: CommandDefinition[] = [
         aliases: ['print'],
         category: 'utility',
         description: 'Print text with environment variable expansion ($USER, $THEME, etc.).',
-        usage: 'echo [--typewriter] <text...>',
+        usage: 'echo [-t|--typewriter] <text...>',
         examples: ['echo Welcome $USER', 'echo --typewriter "Wake up, Operator..."'],
+        supportedFlags: [{ long: 'typewriter', short: 't', takesValue: false }],
         execute: async ({ args, flags, terminal }) => {
             const raw = args.join(' ');
             const expanded = raw.replace(/\$([A-Z0-9_]+)/gi, (_, key: string) => {
@@ -257,7 +258,8 @@ export const utilityCommands: CommandDefinition[] = [
     category: 'utility',
     description: 'Transform text using SHA-256, Base64, Hex, Binary, or ROT13.',
     usage: 'hash <sha256|base64|hex|rot13|binary> <text>',
-    examples: ['hash sha256 "Ghost Shell"', 'hash base64 "Abass le roi des Bobbys"'],
+    examples: ['hash sha256 "Ghost Shell"', 'hash base64 "KING"'],
+    supportedFlags: [],
     execute: async ({ args, terminal }) => {
         if (args.length < 2) {
             terminal.audio.playError();
@@ -353,6 +355,7 @@ export const utilityCommands: CommandDefinition[] = [
             typewriter: true,
             speed: 8
         });
+        if (terminal.isAborted) return;
 
         const hops = [
             { node: '10.244.0.1   (LOCAL-CRT-BRIDGE)', port: '443/TLS', latency: '0.4ms', status: 'OPEN // ENCRYPTED' },
@@ -362,13 +365,16 @@ export const utilityCommands: CommandDefinition[] = [
         ];
 
         for (const hop of hops) {
+            if (terminal.isAborted) return;
             terminal.audio.playBeep(720 + Math.random() * 400, 45);
             await terminal.print(
                 `  [██████████] ${hop.node.padEnd(32)} PORT: ${hop.port.padEnd(11)} RTT: ${hop.latency.padEnd(6)} [${hop.status}]`,
-                                 { type: 'success', typewriter: true, speed: 4, playSound: false }
+                { type: 'success', typewriter: true, speed: 4, playSound: false }
             );
+            if (terminal.isAborted) return;
         }
 
+        if (terminal.isAborted) return;
         terminal.audio.playSuccess();
         await terminal.print('Sweep complete: 4/4 nodes responsive, 0% packet loss.', {
             type: 'system'

@@ -1,12 +1,14 @@
 # GHOST SHELL // GSH-9000X CRT TERMINAL EMULATOR
 
+[![CI](https://github.com/tahaenasraoui-debug/ghost-shell/actions/workflows/ci.yml/badge.svg)](https://github.com/tahaenasraoui-debug/ghost-shell/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-33ff66?style=flat-square)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?style=flat-square&logo=vite&logoColor=white)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-33ff66?style=flat-square)
 ![Web Audio API](https://img.shields.io/badge/Audio-Procedural_WebAudio-ffb000?style=flat-square)
 ![HTML5 Canvas](https://img.shields.io/badge/Shaders-HTML5_Canvas-00f0ff?style=flat-square)
 
-**Ghost Shell** is a zero-dependency, retro-futuristic cathode-ray tube (CRT) terminal emulator that runs entirely in the browser[cite: 1, 2]. Built from scratch with TypeScript, HTML5 Canvas, the native Web Audio API, and scoped CSS, it features real-time procedural sound synthesis, optical phosphor filters, interactive Canvas shaders, an in-memory virtual filesystem, and a custom command-line parser[cite: 1, 2].
+**Ghost Shell** is a zero-dependency, retro-futuristic cathode-ray tube (CRT) terminal emulator that runs entirely in the browser. Built from scratch with TypeScript, HTML5 Canvas, the native Web Audio API, and scoped CSS, it features real-time procedural sound synthesis, optical phosphor filters, interactive Canvas shaders, an in-memory virtual filesystem, and a custom command-line parser.
 
 ---
 
@@ -26,20 +28,30 @@
 ## Quick Start
 
 ### Prerequisites
-- **Node.js** `>= 18.0.0`
+- **Node.js** `>= 20.0.0`
 - **npm** `>= 9.0.0`
 
 ### Installation & Local Development
 
 ```bash
-# Install development dependencies (Vite + TypeScript)
+# Clone the repository
+git clone https://github.com/tahaenasraoui-debug/ghost-shell.git
+cd ghost-shell
+
+# Install development dependencies (Vite, TypeScript, Vitest, ESLint)
 npm install
 
 # Start the local development server on http://localhost:3000
 npm run dev
 
+# Run ESLint check
+npm run lint
+
 # Run strict TypeScript type verification
 npm run typecheck
+
+# Run unit tests
+npm test
 
 # Build optimized production bundle to ./dist
 npm run build
@@ -124,9 +136,9 @@ The `calc` command uses a custom recursive-descent parser (`SafeMathEvaluator`) 
 
 | Command | Aliases | Usage | Description |
 | :--- | :--- | :--- | :--- |
-| `help` | `?`, `man` | `help [command]` | List all commands or inspect a specific command's manual[cite: 1] |
+| `help` | `?`, `man` | `help [command]` | List all commands or inspect a specific command's manual |
 | `clear` | `cls` | `clear` | Clear the terminal phosphor viewport buffer |
-| `sysinfo` | `neofetch`, `status` | `sysinfo` | Display ASCII crest, hardware telemetry, uptime, and phosphor specs[cite: 1] |
+| `sysinfo` | `neofetch`, `status` | `sysinfo` | Display ASCII crest, hardware telemetry, uptime, and phosphor specs |
 | `whoami` | `id` | `whoami` | Print active operator identity (`king`) and security clearance |
 | `ls` | `dir` | `ls` | List all files in the virtual filesystem with permissions and byte sizes |
 | `cat` | `read`, `type` | `cat <filename>` | Print the contents of a virtual file |
@@ -157,7 +169,7 @@ history --clear
 | `crt` | — | `crt [on\|off\|toggle]` | Enable, bypass, or toggle CRT scanline and aperture filters |
 | `degauss` | — | `degauss` | Discharge the electromagnetic screen degaussing coil |
 | `glitch` | — | `glitch [ms]` | Inject a chromatic aberration signal interference burst (`150–2000ms`) |
-| `matrix` | `rain` | `matrix [stop]` | Launch procedural Katakana digital rain on the background Canvas[cite: 1] |
+| `matrix` | `rain` | `matrix [stop]` | Launch procedural Katakana digital rain on the background Canvas |
 | `scope` | `oscilloscope`, `wave` | `scope [stop]` | Launch real-time Web Audio waveform oscilloscope on the Canvas |
 | `starfield` | `warp` | `starfield [stop]` | Launch 3D vector starfield warp simulation on the Canvas |
 | `plasma` | — | `plasma [stop]` | Launch retro demoscene trigonometric plasma shader on the Canvas |
@@ -207,11 +219,21 @@ scan 10.244.8.1
 
 ```text
 ghost-shell/
-├── package.json              # Scripts & devDependencies (Vite + TypeScript)
+├── .github/workflows/ci.yml  # GitHub Actions CI pipeline
+├── .editorconfig             # Cross-editor formatting defaults
+├── .prettierrc               # Prettier formatting configuration
+├── eslint.config.mjs         # ESLint flat config for TypeScript
+├── LICENSE                   # MIT License
+├── package.json              # Scripts & devDependencies
+├── package-lock.json         # Deterministic dependency lockfile
 ├── tsconfig.json             # Strict ES2022 + DOM TypeScript configuration
 ├── vite.config.ts            # Vite bundler & dev server configuration
 ├── index.html                # CRT monitor chassis, HUD telemetry, & bezel DOM
 ├── README.md                 # Architecture & command documentation
+├── tests/                    # Vitest unit & integration test suites
+│   ├── commandRegistry.test.ts
+│   ├── terminal.test.ts
+│   └── vfs.test.ts
 └── src/
     ├── types.ts              # Shared TypeScript interfaces & state contracts
     ├── main.ts               # Application bootstrap & hardware bezel wiring

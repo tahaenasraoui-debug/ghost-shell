@@ -47,7 +47,7 @@ function bootstrapGhostShell(): void {
 
     btnAudio?.addEventListener('click', () => {
         audio.init();
-        const nextState = audio.setEnabled(!audio.enabled);
+        const nextState = terminal.setAudioEnabled(!audio.enabled);
         btnAudio.classList.toggle('active', nextState);
         if (nextState) {
             audio.playSuccess();

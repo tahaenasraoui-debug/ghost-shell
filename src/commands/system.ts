@@ -249,6 +249,7 @@ export const systemCommands: CommandDefinition[] = [
     category: 'system',
     description: 'Display or clear the persistent command history buffer.',
     usage: 'history [--clear]',
+    supportedFlags: [{ long: 'clear', short: 'c', takesValue: false }],
     execute: async ({ flags, terminal }) => {
         if (flags.clear || flags.c) {
             terminal.clearHistory();
