@@ -12,6 +12,12 @@
 
 ---
 
+## Preview
+
+![Ghost Shell CRT Terminal Emulator Preview](assets/screenshot.png)
+
+---
+
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
@@ -230,6 +236,8 @@ ghost-shell/
 ├── vite.config.ts            # Vite bundler & dev server configuration
 ├── index.html                # CRT monitor chassis, HUD telemetry, & bezel DOM
 ├── README.md                 # Architecture & command documentation
+├── assets/
+│   └── screenshot.png        # CRT terminal preview screenshot
 ├── tests/                    # Vitest unit & integration test suites
 │   ├── commandRegistry.test.ts
 │   ├── terminal.test.ts
@@ -248,3 +256,9 @@ ghost-shell/
         ├── visual.ts         # Phosphor themes, Canvas shaders, & audio commands
         └── utility.ts        # Safe math parser, hashing, hexdump, & network tools
 ```
+
+---
+
+## License
+
+Distributed under the [MIT License](LICENSE).
